@@ -1,0 +1,392 @@
+"""/* Configurações */
+const API_BASE = window.localStorage.getItem('api_base') || 'http://127.0.0.1:8000';
+const PAGE_SIZE = 8;
+
+/* Estado */
+let alunosCache = [];
+let turmasCache = [];
+let currentPage = 1;
+let currentTab = 'alunos';
+
+/* Util */
+const qs = (sel, el=document) => el.querySelector(sel);
+const qsa = (sel, el=document) => Array.from(el.querySelectorAll(sel));
+const toast = (msg) => {
+  const t = qs('#toast');
+  t.textContent = msg;
+  t.className = 'toast-show';
+  setTimeout(()=>{ t.className=''; t.textContent=''; }, 2400);
+};
+const saveSort = (value) => localStorage.setItem('sort_by', value);
+const loadSort = () => localStorage.getItem('sort_by') || 'nome';
+const toggleTheme = () => {
+  const root = document.documentElement;
+  const isDark = root.getAttribute('data-theme') === 'dark';
+  root.setAttribute('data-theme', isDark ? 'light' : 'dark');
+  localStorage.setItem('theme', isDark ? 'light' : 'dark');
+  qs('#btn-theme').setAttribute('aria-pressed', String(!isDark));
+};
+const applyTheme = () => {
+  const theme = localStorage.getItem('theme') || 'light';
+  document.documentElement.setAttribute('data-theme', theme);
+  qs('#btn-theme').setAttribute('aria-pressed', String(theme==='dark'));
+};
+
+/* Regras/validações front */
+function idadeFromDate(dateStr){
+  const d = new Date(dateStr);
+  const now = new Date();
+  let age = now.getFullYear() - d.getFullYear();
+  const m = now.getMonth() - d.getMonth();
+  if (m < 0 || (m === 0 && now.getDate() < d.getDate())) age--;
+  return age;
+}
+function validateAlunoForm(data){
+  const errors = [];
+  if (!data.nome || data.nome.trim().length < 3 || data.nome.trim().length > 80) {
+    errors.push('Nome deve ter entre 3 e 80 caracteres.');
+  }
+  if (!data.data_nascimento) {
+    errors.push('Data de nascimento é obrigatória.');
+  } else {
+    const idade = idadeFromDate(data.data_nascimento);
+    if (idade < 5) errors.push('Aluno deve ter pelo menos 5 anos.');
+  }
+  if (data.email && !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(data.email)) {
+    errors.push('Email inválido.');
+  }
+  if (!['ativo','inativo'].includes(data.status)) {
+    errors.push('Status inválido.');
+  }
+  return errors;
+}
+
+/* Fetch helpers */
+async function api(path, options={}){
+  const res = await fetch(`${API_BASE}${path}`, {
+    headers: {'Content-Type': 'application/json'},
+    ...options
+  });
+  const ct = res.headers.get('content-type') || '';
+  const body = ct.includes('application/json') ? await res.json() : await res.text();
+  if (!res.ok) {
+    throw new Error(body?.detail || body?.message || JSON.stringify(body));
+  }
+  return body;
+}
+
+/* Render */
+function renderKPIs(){
+  const total = alunosCache.length;
+  const ativos = alunosCache.filter(a=>a.status==='ativo').length;
+  const turmaSel = qs('#filter-turma').value;
+  let porTurma = '—';
+  if (turmaSel) {
+    porTurma = alunosCache.filter(a=>String(a.turma_id||'')===String(turmaSel)).length;
+  }
+  qs('#kpi-total').textContent = total;
+  qs('#kpi-ativos').textContent = ativos;
+  qs('#kpi-por-turma').textContent = porTurma;
+}
+
+function sortAlunos(list){
+  const sortBy = qs('#sort-by').value;
+  saveSort(sortBy);
+  if (sortBy === 'nome'){
+    return [...list].sort((a,b)=>a.nome.localeCompare(b.nome));
+  } else {
+    return [...list].sort((a,b)=>{
+      const ia = idadeFromDate(a.data_nascimento);
+      const ib = idadeFromDate(b.data_nascimento);
+      return ib - ia; // maior -> menor
+    });
+  }
+}
+
+function currentFilters(){
+  return {
+    search: qs('#search').value.trim(),
+    turma_id: qs('#filter-turma').value,
+    status: qs('#filter-status').value
+  };
+}
+
+function applyFilters(){
+  const { search, turma_id, status } = currentFilters();
+  let list = [...alunosCache];
+  if (search){
+    const s = search.toLowerCase();
+    list = list.filter(a=>a.nome.toLowerCase().includes(s) || (a.email||'').toLowerCase().includes(s));
+  }
+  if (turma_id){ list = list.filter(a=>String(a.turma_id||'')===String(turma_id)); }
+  if (status){ list = list.filter(a=>a.status===status); }
+  list = sortAlunos(list);
+  return list;
+}
+
+function renderAlunos(){
+  const list = applyFilters();
+  const tbody = qs('#alunos-tbody');
+  tbody.innerHTML = '';
+  const totalPages = Math.max(1, Math.ceil(list.length / PAGE_SIZE));
+  currentPage = Math.min(currentPage, totalPages);
+  const start = (currentPage - 1) * PAGE_SIZE;
+  const pageItems = list.slice(start, start + PAGE_SIZE);
+  for (const a of pageItems){
+    const tr = document.createElement('tr');
+    const idade = idadeFromDate(a.data_nascimento);
+    tr.innerHTML = `
+      <td>${a.nome}</td>
+      <td>${idade}</td>
+      <td>${a.email||'—'}</td>
+      <td>${a.status}</td>
+      <td>${(a.turma_nome)||'—'}</td>
+      <td>
+        <button class="btn btn-accent" data-edit="${a.id}">Editar</button>
+        <button class="btn" data-del="${a.id}">Excluir</button>
+      </td>`;
+    tbody.appendChild(tr);
+  }
+  qs('#page-info').textContent = `Página ${currentPage} de ${totalPages}`;
+  qs('#prev-page').disabled = currentPage===1;
+  qs('#next-page').disabled = currentPage===totalPages;
+}
+
+function renderTurmas(){
+  const tbody = qs('#turmas-tbody');
+  tbody.innerHTML = '';
+  for (const t of turmasCache){
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${t.nome}</td>
+      <td>${t.capacidade}</td>
+      <td>${t.ocupacao}</td>`;
+    tbody.appendChild(tr);
+  }
+}
+
+function populateTurmaFilters(){
+  const sel = qs('#filter-turma');
+  const selForm = qs('#turma_id');
+  const selEnroll = qs('#turma_id_enroll');
+  [sel, selForm, selEnroll].forEach(s=>{
+    s.innerHTML = s===sel ? '<option value="">Todas</option>' : '<option value="">—</option>';
+  });
+  for (const t of turmasCache){
+    const opt = (value)=>{
+      const o = document.createElement('option');
+      o.value = t.id;
+      o.textContent = t.nome;
+      return o;
+    }
+    sel.appendChild(opt(t.id));
+    selForm.appendChild(opt(t.id));
+    selEnroll.appendChild(opt(t.id));
+  }
+}
+
+function populateAlunoEnroll(){
+  const sel = qs('#aluno_id');
+  sel.innerHTML='';
+  for (const a of alunosCache){
+    const o = document.createElement('option');
+    o.value = a.id;
+    o.textContent = `${a.nome} (${a.status})`;
+    sel.appendChild(o);
+  }
+}
+
+/* Export */
+function exportCSV(list){
+  const headers = ['id','nome','data_nascimento','email','status','turma_id','turma_nome'];
+  const rows = [headers.join(',')];
+  for (const a of list){
+    rows.push(headers.map(h=>JSON.stringify(a[h]??'')).join(','));
+  }
+  const blob = new Blob([rows.join('\\n')], {type:'text/csv'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'alunos.csv'; a.click();
+  URL.revokeObjectURL(url);
+}
+function exportJSON(list){
+  const blob = new Blob([JSON.stringify(list,null,2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'alunos.json'; a.click();
+  URL.revokeObjectURL(url);
+}
+
+/* CRUD */
+async function loadTurmas(){
+  const data = await api('/turmas');
+  turmasCache = data;
+  renderTurmas();
+  populateTurmaFilters();
+}
+async function loadAlunos(){
+  const params = new URLSearchParams(currentFilters());
+  const data = await api(`/alunos?${params.toString()}`);
+  alunosCache = data;
+  renderKPIs();
+  renderAlunos();
+  populateAlunoEnroll();
+}
+async function createAluno(payload){
+  const data = await api('/alunos', {method:'POST', body: JSON.stringify(payload)});
+  toast('Aluno criado com sucesso.');
+  await loadAlunos();
+  return data;
+}
+async function updateAluno(id, payload){
+  const data = await api(`/alunos/${id}`, {method:'PUT', body: JSON.stringify(payload)});
+  toast('Aluno atualizado.');
+  await loadAlunos();
+  return data;
+}
+async function deleteAluno(id){
+  await api(`/alunos/${id}`, {method:'DELETE'});
+  toast('Aluno excluído.');
+  await loadAlunos();
+}
+async function createMatricula(payload){
+  const data = await api('/matriculas', {method:'POST', body: JSON.stringify(payload)});
+  toast('Matrícula realizada.');
+  await Promise.all([loadAlunos(), loadTurmas()]);
+  return data;
+}
+
+/* Handlers */
+function bindEvents(){
+  // Tabs
+  qs('#tab-alunos').addEventListener('click', ()=>{
+    currentTab='alunos';
+    qs('#tab-alunos').classList.add('active'); qs('#tab-alunos').setAttribute('aria-selected','true');
+    qs('#tab-turmas').classList.remove('active'); qs('#tab-turmas').setAttribute('aria-selected','false');
+    qs('#panel-alunos').hidden=false; qs('#panel-turmas').hidden=true;
+  });
+  qs('#tab-turmas').addEventListener('click', ()=>{
+    currentTab='turmas';
+    qs('#tab-turmas').classList.add('active'); qs('#tab-turmas').setAttribute('aria-selected','true');
+    qs('#tab-alunos').classList.remove('active'); qs('#tab-alunos').setAttribute('aria-selected','false');
+    qs('#panel-alunos').hidden=true; qs('#panel-turmas').hidden=false;
+  });
+
+  // Search
+  qs('#btn-search').addEventListener('click', ()=>{ currentPage=1; loadAlunos(); });
+  qs('#search').addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ e.preventDefault(); currentPage=1; loadAlunos(); } });
+
+  // Filters
+  qs('#btn-apply').addEventListener('click', ()=>{ currentPage=1; loadAlunos(); });
+  qs('#btn-clear').addEventListener('click', ()=>{
+    qs('#filter-turma').value=''; qs('#filter-status').value=''; qs('#search').value=''; currentPage=1; loadAlunos();
+  });
+
+  // Sort persist
+  const savedSort = loadSort();
+  qs('#sort-by').value = savedSort;
+  qs('#sort-by').addEventListener('change', ()=>{ currentPage=1; renderAlunos(); });
+
+  // Pagination
+  qs('#prev-page').addEventListener('click', ()=>{ if(currentPage>1){ currentPage--; renderAlunos(); }});
+  qs('#next-page').addEventListener('click', ()=>{ currentPage++; renderAlunos(); });
+
+  // Modals
+  const modalStudent = qs('#modal-student');
+  qs('#btn-new-student').addEventListener('click', ()=>{ modalStudent.showModal(); });
+  qs('#form-student').addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    const payload = {
+      nome: qs('#nome').value.trim(),
+      data_nascimento: qs('#data_nascimento').value,
+      email: qs('#email').value.trim() || null,
+      status: qs('#status').value,
+      turma_id: qs('#turma_id').value ? Number(qs('#turma_id').value) : null,
+    };
+    const errs = validateAlunoForm(payload);
+    if (errs.length){ toast(errs[0]); return; }
+    try{
+      await createAluno(payload);
+      modalStudent.close();
+      e.target.reset();
+    }catch(err){ toast(err.message); }
+  });
+
+  const modalEnroll = qs('#modal-enroll');
+  qs('#btn-new-enroll').addEventListener('click', ()=>{ populateAlunoEnroll(); modalEnroll.showModal(); });
+  qs('#form-enroll').addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    const payload = {
+      aluno_id: Number(qs('#aluno_id').value),
+      turma_id: Number(qs('#turma_id_enroll').value)
+    };
+    try{
+      await createMatricula(payload);
+      modalEnroll.close();
+      e.target.reset();
+    }catch(err){ toast(err.message); }
+  });
+
+  // Actions edit/delete
+  qs('#alunos-tbody').addEventListener('click', async (e)=>{
+    const idEdit = e.target.getAttribute('data-edit');
+    const idDel = e.target.getAttribute('data-del');
+    if (idDel){
+      if (confirm('Tem certeza que deseja excluir?')){
+        try{ await deleteAluno(Number(idDel)); }catch(err){ toast(err.message); }
+      }
+    } else if (idEdit){
+      const a = alunosCache.find(x=>String(x.id)===String(idEdit));
+      if (!a) return;
+      // reusar modal de aluno para edição
+      const modal = qs('#modal-student');
+      modal.showModal();
+      qs('#title-student').textContent = 'Editar Aluno';
+      qs('#nome').value = a.nome;
+      qs('#data_nascimento').value = a.data_nascimento;
+      qs('#email').value = a.email || '';
+      qs('#status').value = a.status;
+      qs('#turma_id').value = a.turma_id || '';
+      const originalHandler = qs('#form-student').onsubmit;
+      qs('#form-student').onsubmit = async (ev)=>{
+        ev.preventDefault();
+        const payload = {
+          nome: qs('#nome').value.trim(),
+          data_nascimento: qs('#data_nascimento').value,
+          email: qs('#email').value.trim() || null,
+          status: qs('#status').value,
+          turma_id: qs('#turma_id').value ? Number(qs('#turma_id').value) : null,
+        };
+        const errs = validateAlunoForm(payload);
+        if (errs.length){ toast(err[0]); return; }
+        try{
+          await updateAluno(a.id, payload);
+          modal.close();
+          qs('#title-student').textContent = 'Novo Aluno';
+          qs('#form-student').reset();
+          qs('#form-student').onsubmit = originalHandler;
+        }catch(err){ toast(err.message); }
+      };
+    }
+  });
+
+  // Export
+  qs('#btn-export-csv').addEventListener('click', ()=>exportCSV(applyFilters()));
+  qs('#btn-export-json').addEventListener('click', ()=>exportJSON(applyFilters()));
+
+  // Theme
+  qs('#btn-theme').addEventListener('click', toggleTheme);
+}
+
+/* Init */
+(async function init(){
+  applyTheme();
+  bindEvents();
+  try{
+    await loadTurmas();
+    await loadAlunos();
+    toast('Dados carregados.');
+  }catch(err){
+    toast('Erro ao carregar API. Verifique se o backend está rodando em ' + API_BASE);
+  }
+})();"""
