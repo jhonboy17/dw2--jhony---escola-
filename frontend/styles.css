@@ -1,0 +1,104 @@
+/* Reset básico */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: "Roboto", Arial, sans-serif;
+  background-color: #F1F5F9;
+  color: #0B1220;
+  padding: 0;
+}
+
+/* Cabeçalho */
+header {
+  background: #2563EB;
+  color: white;
+  padding: 20px;
+  text-align: center;
+  border-bottom: 5px solid #10B981;
+}
+
+header h1 {
+  font-size: 28px;
+  margin-bottom: 10px;
+}
+
+.search-box {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+}
+
+.search-box input {
+  padding: 10px;
+  border-radius: 8px;
+  border: none;
+  width: 250px;
+  font-size: 16px;
+}
+
+.search-box button {
+  background: #10B981;
+  border: none;
+  padding: 10px 16px;
+  color: white;
+  font-size: 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: 0.3s;
+}
+
+.search-box button:hover {
+  background: #059669;
+}
+
+/* Área principal */
+main {
+  padding: 20px;
+  display: flex;
+  justify-content: center;
+}
+
+.card {
+  background: white;
+  padding: 20px;
+  border-radius: 12px;
+  box-shadow: 0px 4px 8px rgba(0,0,0,0.1);
+  width: 90%;
+  max-width: 900px;
+}
+
+/* Tabela */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 15px;
+}
+
+table th, table td {
+  border: 1px solid #ddd;
+  padding: 12px;
+  text-align: center;
+}
+
+table th {
+  background: #2563EB;
+  color: white;
+}
+
+table tr:nth-child(even) {
+  background: #F9FAFB;
+}
+
+/* Rodapé */
+footer {
+  background: #2563EB;
+  color: white;
+  text-align: center;
+  padding: 15px;
+  margin-top: 20px;
+  border-top: 5px solid #10B981;
+}

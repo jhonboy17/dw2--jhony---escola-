@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Gestão Escolar</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header>
+    <h1>📘 Gestão Escolar</h1>
+    <div class="search-box">
+      <input type="search" id="searchAluno" placeholder="🔍 Buscar aluno...">
+      <button onclick="listarAlunos()">Buscar</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="card">
+      <h2>📋 Lista de Alunos</h2>
+      <table id="alunosTable">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Nome</th>
+            <th>Status</th>
+            <th>Email</th>
+            <th>Turma</th>
+          </tr>
+        </thead>
+        <tbody id="alunos"></tbody>
+      </table>
+    </section>
+  </main>
+
+  <footer>
+    <p>Desenvolvido por Jhony Samuel – DW2</p>
+  </footer>
+
+  <script src="scripts.js"></script>
+</body>
+</html>
